@@ -1,0 +1,176 @@
+Stage 2: Flask + MySQL Integration
+■ Topics:
+• Connect Flask with MySQL
+• CRUD Operations
+• Database Models & Relationships
+• Migrations & Error Handling
+■ Practice: “Online Notes API” (CRUD with title & content)
+
+
+
+
+🗂 Folder Structure
+
+Flask_Notes/
+├── app.py                 # Initialize Flask app & register blueprints
+├── config.py              # DB configuration
+├── db.py                  # DB connection
+├── requirements.txt       # Python packages
+├── routes/
+│   └── notes_routes.py    # Notes endpoints
+├── controllers/
+│   └── notes_controller.py # Logic for CRUD operations
+└── models/
+    └── notes_model.py      # SQL queries for notes
+
+
+
+
+Step 1: Install Requirements
+  pip install flask mysql-connector-python
+
+
+
+
+Step 2: Create config.py
+
+# config.py
+
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': '',   # your MySQL password (empty if none)
+    'database': 'flask_notes'
+}
+
+
+
+
+Step 3: Create Database in MySQL
+
+CREATE DATABASE flask_notes;
+USE flask_notes;
+
+CREATE TABLE notes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL
+);
+
+
+
+Step 4: Create db.py – Database Connection File
+# db.py
+import mysql.connector
+from config import DB_CONFIG
+
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
+    except mysql.connector.Error as err:
+        print("Database Connection Error:", err)
+        return None
+
+
+
+
+Step 5: Create app.py
+
+from flask import Flask, jsonify, request
+from db import get_db_connection
+
+app = Flask(__name__)
+
+# ---------------------- ADD NOTE ----------------------
+@app.route('/notes', methods=['POST'])
+def add_note():
+    data = request.get_json()
+    title = data.get('title')
+    content = data.get('content')
+
+    if not title or not content:
+        return jsonify({'error': 'Title and content are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO notes (title, content) VALUES (%s, %s)", (title, content))
+        conn.commit()
+        return jsonify({'message': 'Note added successfully'}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ---------------------- GET ALL NOTES ----------------------
+@app.route('/notes', methods=['GET'])
+def get_notes():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM notes")
+    notes = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(notes)
+
+# ---------------------- GET NOTE BY ID ----------------------
+@app.route('/notes/<int:note_id>', methods=['GET'])
+def get_note_by_id(note_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM notes WHERE id = %s", (note_id,))
+    note = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if note:
+        return jsonify(note)
+    else:
+        return jsonify({'error': 'Note not found'}), 404
+
+# ---------------------- UPDATE NOTE ----------------------
+@app.route('/notes/<int:note_id>', methods=['PUT'])
+def update_note(note_id):
+    data = request.get_json()
+    title = data.get('title')
+    content = data.get('content')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE notes SET title=%s, content=%s WHERE id=%s", (title, content, note_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Note not found'}), 404
+        return jsonify({'message': 'Note updated successfully'})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ---------------------- DELETE NOTE ----------------------
+@app.route('/notes/<int:note_id>', methods=['DELETE'])
+def delete_note(note_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM notes WHERE id=%s", (note_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Note not found'}), 404
+        return jsonify({'message': 'Note deleted successfully'})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ---------------------- MAIN ----------------------
+if __name__ == '__main__':
+    app.run(debug=True)
